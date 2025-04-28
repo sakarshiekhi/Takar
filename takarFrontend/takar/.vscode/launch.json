@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Spring Boot-TakarApplication<takar>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "com.sakar.takar.TakarApplication",
+            "projectName": "takar",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        }
+    ]
+}

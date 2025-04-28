@@ -1,0 +1,11 @@
+{
+    "java.compile.nullAnalysis.mode": "automatic",
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "cSpell.words": [
+        "takar",
+        "vazirmatn"
+    ],
+    "java.project.sourcePaths": [
+        "backend/takar"
+    ]
+}
