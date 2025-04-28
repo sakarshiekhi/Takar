@@ -19,9 +19,15 @@
 ## Current Progress
 - [x] Flutter UI for login/signup
 - [x] Django backend setup with JWT authentication
-- [ ] Forgot password flow (in progress)
-- [ ] Full calendar page with Jalali support
-
+- [x] Forgot password flow (in progress)
+- [ ] Full Calendar Page with Jalali (Persian) Calendar Support
+- [ ] Activities Page
+- [ ] Profile Section
+- [ ] First-Time Opening Introduction Pages (Onboarding)
+- [ ] Dual Language Support (English/Persian)
+- [ ] Graphs for Users to Track Progress
+- [ ] Firebase Backend Integration
+- [ ] Google Authentication
 ## How to run
 > Frontend:
 - Flutter SDK must be installed
