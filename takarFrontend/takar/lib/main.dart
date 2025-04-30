@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:takar/pages/Activities/activities.dart';
-//import 'package:takar/pages/login.dart';
+import 'package:takar/pages/login.dart';
+
 void main() {
   runApp(const MyApp());
 }
@@ -37,7 +37,7 @@ class _MyAppState extends State<MyApp> {
         primarySwatch: Colors.deepPurple,
         scaffoldBackgroundColor: Colors.grey[900],
       ),
-      home:ActivitiesPage(
+      home: Login(
         isDarkMode: _isDarkMode,
         onToggleTheme: toggleTheme,
       ),
