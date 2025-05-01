@@ -37,7 +37,7 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
   Future<void> _loadActivities() async {
     final prefs = await SharedPreferences.getInstance();
     final activitiesJson = prefs.getString('activities');
-    
+
     setState(() {
       if (activitiesJson != null) {
         try {
@@ -103,11 +103,11 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
         // Calculate the duration since the start time
         final startTime = DateTime.parse(_activities[index]['startTime']);
         final currentDuration = DateTime.now().difference(startTime);
-        
+
         // Update the total time spent
         _activities[index]['timeSpent'] = 
           ((_activities[index]['timeSpent'] as int?) ?? 0) + 1;
-        
+
         // Save activities periodically to prevent data loss
         if (DateTime.now().millisecondsSinceEpoch % 5 == 0) {
           _saveActivities();
@@ -123,25 +123,25 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
     final activity = _activities[index];
     final startTime = DateTime.parse(activity['startTime']);
     final duration = DateTime.now().difference(startTime);
-    
+
     setState(() {
       // Stop the timer
       activity['isRunning'] = false;
-      
+
       // Add the current session to total time spent
       activity['timeSpent'] = 
         ((activity['timeSpent'] as int?) ?? 0) + duration.inSeconds;
-      
+
       // Record the session
       activity['sessions'].add({
         'start': activity['startTime'],
         'end': DateTime.now().toIso8601String(),
         'duration': duration.inSeconds,
       });
-      
+
       // Clear the start time
       activity['startTime'] = null;
-      
+
       // Save the updated activity
       _saveActivities();
     });
@@ -423,4 +423,4 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
-}
+} 
