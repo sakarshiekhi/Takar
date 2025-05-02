@@ -9,12 +9,12 @@ class ProgressCircle extends StatefulWidget {
   final Color completedColor; // Added completedColor parameter
 
   const ProgressCircle({
-    Key? key,
+    super.key,
     required this.progress,
     required this.onComplete,
     this.tickSize = 32.0, // Default tick size
     this.completedColor = Colors.green, // Default completed color
-  }) : super(key: key);
+  });
 
   @override
   _ProgressCircleState createState() => _ProgressCircleState();

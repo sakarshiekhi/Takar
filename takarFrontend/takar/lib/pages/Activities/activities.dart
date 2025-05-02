@@ -1,426 +1,169 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+import 'package:google_fonts/google_fonts.dart';
 
 class ActivitiesPage extends StatefulWidget {
   final bool isDarkMode;
   final VoidCallback onToggleTheme;
 
   const ActivitiesPage({
-    Key? key,
+    super.key,
     required this.isDarkMode,
     required this.onToggleTheme,
-  }) : super(key: key);
+  });
 
   @override
-  _ActivitiesPageState createState() => _ActivitiesPageState();
+  State<ActivitiesPage> createState() => _ActivitiesPageState();
 }
 
 class _ActivitiesPageState extends State<ActivitiesPage> {
-  List<Map<String, dynamic>> _activities = [];
-  Timer? _timer;
+  final List<Map<String, String>> _activities = [];
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _loadActivities();
-  }
-
-  Future<void> _loadActivities() async {
-    final prefs = await SharedPreferences.getInstance();
-    final activitiesJson = prefs.getString('activities');
-
-    setState(() {
-      if (activitiesJson != null) {
-        try {
-          final List<dynamic> savedActivities = json.decode(activitiesJson);
-          _activities = savedActivities.map<Map<String, dynamic>>((activity) {
-            return {
-              'title': activity['title'] ?? 'Unnamed Activity',
-              'done': activity['done'] ?? false,
-              'timeSpent': activity['timeSpent'] ?? 0,
-              'isRunning': activity['isRunning'] ?? false,
-              'startTime': activity['startTime'],
-              'sessions': activity['sessions'] ?? [],
-            };
-          }).toList();
-        } catch (e) {
-          _activities = [];
-          print('Error loading activities: $e');
-        }
-      } else {
-        _activities = [];
-      }
-    });
-  }
-
-  Future<void> _saveActivities() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('activities', json.encode(_activities));
-  }
-
-  void _addActivity(String title) {
+  void _addActivity(String title, String duration) {
     setState(() {
       _activities.add({
-        "title": title,
-        "done": false,
-        "timeSpent": 0,
-        "isRunning": false,
-        "startTime": null,
-        "sessions": []
-      });
-      _saveActivities();
-    });
-  }
-
-  void _startTimer(int index) {
-    // Ensure we're not starting an already running timer
-    if (_activities[index]['isRunning'] ?? false) return;
-
-    setState(() {
-      _activities[index]['isRunning'] = true;
-      _activities[index]['startTime'] = DateTime.now().toIso8601String();
-      _saveActivities();
-    });
-
-    // Cancel any existing timer
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted || !((_activities[index]['isRunning'] ?? false))) {
-        timer.cancel();
-        return;
-      }
-
-      setState(() {
-        // Calculate the duration since the start time
-        final startTime = DateTime.parse(_activities[index]['startTime']);
-        final currentDuration = DateTime.now().difference(startTime);
-
-        // Update the total time spent
-        _activities[index]['timeSpent'] = 
-          ((_activities[index]['timeSpent'] as int?) ?? 0) + 1;
-
-        // Save activities periodically to prevent data loss
-        if (DateTime.now().millisecondsSinceEpoch % 5 == 0) {
-          _saveActivities();
-        }
+        'title': title,
+        'duration': duration,
+        'time': TimeOfDay.now().format(context),
       });
     });
   }
 
-  void _pauseTimer(int index) {
-    // Ensure we're pausing a running timer
-    if (!(_activities[index]['isRunning'] ?? false)) return;
+  void _openAddActivityModal() {
+    final titleController = TextEditingController();
+    final durationController = TextEditingController();
 
-    final activity = _activities[index];
-    final startTime = DateTime.parse(activity['startTime']);
-    final duration = DateTime.now().difference(startTime);
-
-    setState(() {
-      // Stop the timer
-      activity['isRunning'] = false;
-
-      // Add the current session to total time spent
-      activity['timeSpent'] = 
-        ((activity['timeSpent'] as int?) ?? 0) + duration.inSeconds;
-
-      // Record the session
-      activity['sessions'].add({
-        'start': activity['startTime'],
-        'end': DateTime.now().toIso8601String(),
-        'duration': duration.inSeconds,
-      });
-
-      // Clear the start time
-      activity['startTime'] = null;
-
-      // Save the updated activity
-      _saveActivities();
-    });
-
-    // Cancel the periodic timer
-    _timer?.cancel();
-  }
-
-  String _formatTime(int seconds) {
-    final hours = seconds ~/ 3600;
-    final minutes = (seconds % 3600) ~/ 60;
-    final secs = seconds % 60;
-    return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
-  }
-
-  void _showAddActivityDialog() {
-    final controller = TextEditingController();
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Text(
-          'Create New Activity',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: widget.isDarkMode ? Colors.white : Colors.black87,
-          ),
-        ),
-        content: TextField(
-          controller: controller,
-          decoration: InputDecoration(
-            hintText: 'Enter activity name',
-            filled: true,
-            fillColor: widget.isDarkMode ? Colors.grey[800] : Colors.grey[200],
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide.none,
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Cancel', 
-              style: TextStyle(color: widget.isDarkMode ? Colors.white70 : Colors.black54),
-            ),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepPurple,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            onPressed: () {
-              final title = controller.text.trim();
-              if (title.isNotEmpty) {
-                _addActivity(title);
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Create'),
-          ),
-        ],
+      isScrollControlled: true,
+      backgroundColor: widget.isDarkMode ? Colors.grey[900] : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-    );
-  }
-
-  void _showEditActivityDialog(int index) {
-    final controller = TextEditingController(text: _activities[index]['title']);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Text(
-          'Edit Activity',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: widget.isDarkMode ? Colors.white : Colors.black87,
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            top: 24,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
           ),
-        ),
-        content: TextField(
-          controller: controller,
-          decoration: InputDecoration(
-            hintText: 'Activity name',
-            filled: true,
-            fillColor: widget.isDarkMode ? Colors.grey[800] : Colors.grey[200],
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide.none,
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Cancel', 
-              style: TextStyle(color: widget.isDarkMode ? Colors.white70 : Colors.black54),
-            ),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepPurple,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Add Activity',
+                style: GoogleFonts.vazirmatn(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: widget.isDarkMode ? Colors.white : Colors.black,
+                ),
               ),
-            ),
-            onPressed: () {
-              final title = controller.text.trim();
-              if (title.isNotEmpty) {
-                setState(() {
-                  _activities[index]['title'] = title;
-                  _saveActivities();
-                });
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Save'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: titleController,
+                decoration: const InputDecoration(labelText: 'Title'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: durationController,
+                decoration: const InputDecoration(
+                  labelText: 'Duration (e.g. 30m)',
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () {
+                  if (titleController.text.isNotEmpty &&
+                      durationController.text.isNotEmpty) {
+                    _addActivity(titleController.text, durationController.text);
+                    Navigator.pop(context);
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor:
+                      widget.isDarkMode ? Colors.deepPurple : Colors.blue,
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text("Add", style: TextStyle(color: Colors.white)),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final backgroundColor = widget.isDarkMode ? Colors.grey[900] : Colors.white;
-    final textColor = widget.isDarkMode ? Colors.white : Colors.black87;
+    final themeColor = widget.isDarkMode ? Colors.white : Colors.black;
 
     return Scaffold(
-      backgroundColor: backgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         elevation: 0,
+        backgroundColor: Colors.transparent,
         title: Text(
-          'Activities',
-          style: TextStyle(
-            color: textColor,
+          "Your Activities",
+          style: GoogleFonts.vazirmatn(
+            color: themeColor,
+            fontSize: 22,
             fontWeight: FontWeight.bold,
-            fontSize: 24,
           ),
         ),
         actions: [
           IconButton(
-            icon: Icon(
-              widget.isDarkMode ? Icons.light_mode : Icons.dark_mode,
-              color: textColor,
-            ),
             onPressed: widget.onToggleTheme,
+            icon: Icon(
+              widget.isDarkMode ? Icons.wb_sunny : Icons.nightlight_round,
+              color: themeColor,
+            ),
           ),
         ],
       ),
-      body: _activities.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.list_alt,
-                    size: 100,
-                    color: textColor.withOpacity(0.5),
+      body:
+          _activities.isEmpty
+              ? Center(
+                child: Text(
+                  'No activities yet.\nTap + to add one!',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.vazirmatn(
+                    fontSize: 16,
+                    color: themeColor.withOpacity(0.6),
                   ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'No activities yet',
-                    style: TextStyle(
-                      color: textColor.withOpacity(0.7),
-                      fontSize: 18,
+                ),
+              )
+              : ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: _activities.length,
+                itemBuilder: (context, index) {
+                  final activity = _activities[index];
+                  return Card(
+                    color: Theme.of(context).cardColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                  ),
-                ],
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              itemCount: _activities.length,
-              itemBuilder: (context, index) {
-                final activity = _activities[index];
-                final isRunning = activity['isRunning'] ?? false;
-
-                return Card(
-                  elevation: 3,
-                  margin: const EdgeInsets.symmetric(vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  color: widget.isDarkMode 
-                    ? Colors.grey[800] 
-                    : Colors.grey[100],
-                  child: Dismissible(
-                    key: Key(activity['title'] + index.toString()),
-                    direction: DismissDirection.endToStart,
-                    background: Container(
-                      alignment: Alignment.centerRight,
-                      decoration: BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                      padding: const EdgeInsets.only(right: 20),
-                      child: const Icon(
-                        Icons.delete,
-                        color: Colors.white,
-                      ),
-                    ),
-                    confirmDismiss: (direction) async {
-                      return await showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: Text('Delete Activity', style: TextStyle(color: textColor)),
-                          content: Text('Are you sure you want to delete this activity?', style: TextStyle(color: textColor)),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(false),
-                              child: const Text('Cancel'),
-                            ),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                              onPressed: () => Navigator.of(context).pop(true),
-                              child: const Text('Delete'),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                    onDismissed: (direction) {
-                      setState(() {
-                        _activities.removeAt(index);
-                        _saveActivities();
-                      });
-                    },
+                    margin: const EdgeInsets.only(bottom: 12),
                     child: ListTile(
                       title: Text(
-                        activity['title'],
-                        style: TextStyle(
-                          color: textColor,
+                        activity['title']!,
+                        style: GoogleFonts.vazirmatn(
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       subtitle: Text(
-                        _formatTime(activity['timeSpent'] ?? 0),
-                        style: TextStyle(
-                          color: textColor.withOpacity(0.7),
-                          fontSize: 12,
-                        ),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: Icon(
-                              isRunning ? Icons.pause : Icons.play_arrow,
-                              color: isRunning ? Colors.orange : Colors.green,
-                            ),
-                            onPressed: () => isRunning 
-                              ? _pauseTimer(index) 
-                              : _startTimer(index),
-                          ),
-                          IconButton(
-                            icon: Icon(
-                              Icons.edit,
-                              color: textColor.withOpacity(0.7),
-                            ),
-                            onPressed: () => _showEditActivityDialog(index),
-                          ),
-                        ],
+                        "Duration: ${activity['duration']}, Time: ${activity['time']}",
                       ),
                     ),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showAddActivityDialog,
-        backgroundColor: Colors.deepPurple,
-        child: const Icon(Icons.add, color: Colors.white),
+        onPressed: _openAddActivityModal,
+        backgroundColor: widget.isDarkMode ? Colors.deepPurple : Colors.blue,
+        child: const Icon(Icons.add),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
-} 
+}
