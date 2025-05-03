@@ -81,6 +81,7 @@ class _ProgressCircleState extends State<ProgressCircle>
                   Icons.check,
                   color: widget.completedColor,
                   size: widget.tickSize,
+                  
                 ),
               ),
           ],

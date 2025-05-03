@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:flutter_slidable/flutter_slidable.dart';
 
 class ActivitiesPage extends StatefulWidget {
   final bool isDarkMode;
@@ -105,6 +106,10 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
         }
       });
     });
+  }
+
+  void _editActivity(int index) {
+    // Add edit logic here
   }
 
   void _openAddActivityModal() {
@@ -271,119 +276,115 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
                 ),
               )
               : ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: _activities.length,
-                itemBuilder: (context, index) {
-                  final activity = _activities[index];
-                  return Dismissible(
-                    key: Key(activity['title'] + index.toString()),
-                    background: Container(color: Colors.red),
-                    onDismissed: (direction) {
-                      _deleteActivity(index);
-                    },
-                    child: Card(
-                      color: cardColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: ListTile(
-                        title: Text(
-                          activity['title']!,
-                          style: GoogleFonts.vazirmatn(
-                            fontWeight: FontWeight.w600,
+        padding: const EdgeInsets.all(16),
+        itemCount: _activities.length,
+        itemBuilder: (context, index) {
+          final activity = _activities[index];
+          return Slidable(
+            key: ValueKey(activity['id'] ?? index),
+            child: Card(
+              color: cardColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              margin: const EdgeInsets.only(bottom: 12),
+              child: ListTile(
+                title: Text(
+                  activity['title']!,
+                  style: GoogleFonts.vazirmatn(
+                    fontWeight: FontWeight.w600,
+                    color: themeColor,
+                  ),
+                ),
+                subtitle: Text(
+                  activity['duration'] != '' 
+                    ? "Duration: ${activity['duration']} min, Date: ${activity['date']}, Time: ${activity['time']}"
+                    : "Date: ${activity['date']}, Time: ${activity['time']}",
+                  style: TextStyle(
+                    color: themeColor.withAlpha((0.7 * 255).toInt()),
+                  ),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (activity['duration'] == '') 
+                      Transform.scale(
+                        scale: 1.2,
+                        child: Checkbox(
+                          value: activity['isChecked'] ?? false,
+                          onChanged: (bool? value) {
+                            setState(() {
+                              activity['isChecked'] = value ?? false;
+                              activity['completed'] = value ?? false;
+                            });
+                          },
+                          shape: const CircleBorder(),
+                          checkColor: Colors.white,
+                          activeColor: Colors.deepPurple,
+                          side: BorderSide(
+                            color: themeColor.withOpacity(0.5),
+                            width: 1,
+                          ),
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      )
+                    else ...[
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        transitionBuilder: (child, animation) {
+                          return ScaleTransition(
+                            scale: animation,
+                            child: child,
+                          );
+                        },
+                        child: IconButton(
+                          key: ValueKey(activity['isRunning']),
+                          icon: Icon(
+                            activity['isRunning']
+                                ? Icons.pause
+                                : Icons.play_arrow,
                             color: themeColor,
                           ),
-                        ),
-                        subtitle: Text(
-                          activity['duration'] != '' 
-                            ? "Duration: ${activity['duration']} min, Date: ${activity['date']}, Time: ${activity['time']}"
-                            : "Date: ${activity['date']}, Time: ${activity['time']}",
-                          style: TextStyle(
-                            color: themeColor.withAlpha((0.7 * 255).toInt()),
-                          ),
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (activity['duration'] == '') 
-                              Transform.scale(
-                                scale: 1.2,
-                                child: Checkbox(
-                                  value: activity['isChecked'] ?? false,
-                                  onChanged: (bool? value) {
-                                    setState(() {
-                                      activity['isChecked'] = value ?? false;
-                                      activity['completed'] = value ?? false;
-                                    });
-                                  },
-                                  shape: const CircleBorder(),
-                                  checkColor: Colors.white,
-                                  activeColor: Colors.deepPurple,
-                                  side: BorderSide(
-                                    color: themeColor.withOpacity(0.5),
-                                    width: 1,
-                                  ),
-                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                              )
-                            else ...[
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 300),
-                                transitionBuilder: (child, animation) {
-                                  return ScaleTransition(
-                                    scale: animation,
-                                    child: child,
-                                  );
-                                },
-                                child: IconButton(
-                                  key: ValueKey(activity['isRunning']),
-                                  icon: Icon(
-                                    activity['isRunning']
-                                        ? Icons.pause
-                                        : Icons.play_arrow,
-                                    color: themeColor,
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      activity['isRunning'] =
-                                          !(activity['isRunning'] ?? false);
-                                    });
-                                    if (activity['isRunning']) {
-                                      _updateProgress(index);
-                                    } else {
-                                      // Pause logic
-                                    }
-                                  },
-                                ),
-                              ),
-                              const SizedBox(
-                                width: 8,
-                              ), // space between icon and progress
-                              SizedBox(
-                                width: 30,
-                                height: 30,
-                                child: ProgressCircle(
-                                  progress: activity['progress'],
-                                  onComplete: () {
-                                    setState(() {
-                                      activity['completed'] = true;
-                                    });
-                                  },
-                                  completedColor: Colors.deepPurple.withOpacity(0.6),
-                                  tickSize: 8.0,
-                                  isCompleted: activity['completed'] ?? false,
-                                ),
-                              ),
-                            ],
-                          ],
+                          onPressed: () {
+                            setState(() {
+                              activity['isRunning'] =
+                                  !(activity['isRunning'] ?? false);
+                            });
+                            if (activity['isRunning']) {
+                              _updateProgress(index);
+                            } else {
+                              // Pause logic
+                            }
+                          },
                         ),
                       ),
-                    ),
-                  );
-                },
+                      const SizedBox(
+                        width: 8,
+                      ), // space between icon and progress
+                      SizedBox(
+                        width: 30,
+                        height: 30,
+                        child: ProgressCircle(
+                          progress: activity['progress'],
+                          onComplete: () {
+                            setState(() {
+                              activity['completed'] = true;
+                            });
+                          },
+                          completedColor: const Color.fromARGB(255, 85, 0, 128),
+                          tickSize: 20,
+                          isCompleted: activity['completed'] ?? false,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
+            ),
+          );
+        },
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _openAddActivityModal,
         backgroundColor: Colors.deepPurple,
