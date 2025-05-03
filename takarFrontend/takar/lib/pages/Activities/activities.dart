@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:takar/widgets/progress_circle.dart';
 
 class ActivitiesPage extends StatefulWidget {
   final bool isDarkMode;
@@ -16,7 +18,7 @@ class ActivitiesPage extends StatefulWidget {
 }
 
 class _ActivitiesPageState extends State<ActivitiesPage> {
-  final List<Map<String, String>> _activities = [];
+  final List<Map<String, dynamic>> _activities = [];
 
   void _addActivity(String title, String duration) {
     setState(() {
@@ -24,6 +26,27 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
         'title': title,
         'duration': duration,
         'time': TimeOfDay.now().format(context),
+        'progress': 0.0,
+        'completed': false,
+        'isRunning': false,
+      });
+    });
+  }
+
+  void _updateProgress(int index) {
+    Future.delayed(const Duration(seconds: 6), () {
+      setState(() {
+        if (_activities[index]['isRunning'] == true &&
+            _activities[index]['progress'] < 1.0) {
+          _activities[index]['progress'] += 0.1;
+          if (_activities[index]['progress'] >= 1.0) {
+            _activities[index]['progress'] = 1.0;
+            _activities[index]['completed'] = true;
+            _activities[index]['isRunning'] = false;
+          } else {
+            _updateProgress(index);
+          }
+        }
       });
     });
   }
@@ -31,6 +54,7 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
   void _openAddActivityModal() {
     final titleController = TextEditingController();
     final durationController = TextEditingController();
+    final inputFormatter = FilteringTextInputFormatter.digitsOnly;
 
     showModalBottomSheet(
       context: context,
@@ -67,8 +91,10 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
               TextField(
                 controller: durationController,
                 decoration: const InputDecoration(
-                  labelText: 'Duration (e.g. 30m)',
+                  labelText: 'Duration (minutes)',
                 ),
+                keyboardType: TextInputType.number,
+                inputFormatters: [inputFormatter],
               ),
               const SizedBox(height: 24),
               ElevatedButton(
@@ -80,8 +106,7 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      widget.isDarkMode ? Colors.deepPurple : Colors.blue,
+                  backgroundColor: Colors.deepPurple,
                   minimumSize: const Size(double.infinity, 48),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -99,13 +124,14 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
   @override
   Widget build(BuildContext context) {
     final themeColor = widget.isDarkMode ? Colors.white : Colors.black;
+    final cardColor = widget.isDarkMode ? Colors.grey[850] : Colors.white;
 
     return Scaffold(
       appBar: AppBar(
-        elevation: 0,
         backgroundColor: Colors.transparent,
+        elevation: 0,
         title: Text(
-          "Your Activities",
+          "Activities",
           style: GoogleFonts.vazirmatn(
             color: themeColor,
             fontSize: 22,
@@ -126,7 +152,7 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
           _activities.isEmpty
               ? Center(
                 child: Text(
-                  'No activities yet.\nTap + to add one!',
+                  'No activities yet.\nTap + to add one.',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.vazirmatn(
                     fontSize: 16,
@@ -140,7 +166,7 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
                 itemBuilder: (context, index) {
                   final activity = _activities[index];
                   return Card(
-                    color: Theme.of(context).cardColor,
+                    color: cardColor,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -150,10 +176,71 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
                         activity['title']!,
                         style: GoogleFonts.vazirmatn(
                           fontWeight: FontWeight.w600,
+                          color: themeColor,
                         ),
                       ),
                       subtitle: Text(
-                        "Duration: ${activity['duration']}, Time: ${activity['time']}",
+                        "Duration: ${activity['duration']} min, Time: ${activity['time']}",
+                        style: TextStyle(
+                          color: themeColor.withAlpha((0.7 * 255).toInt()),
+                        ),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 300),
+                            transitionBuilder: (child, animation) {
+                              return ScaleTransition(
+                                scale: animation,
+                                child: child,
+                              );
+                            },
+                            child: IconButton(
+                              key: ValueKey(activity['isRunning']),
+                              icon: Icon(
+                                activity['isRunning']
+                                    ? Icons.pause
+                                    : Icons.play_arrow,
+                                color: themeColor,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  activity['isRunning'] =
+                                      !(activity['isRunning'] ?? false);
+                                });
+                                if (activity['isRunning']) {
+                                  _updateProgress(index);
+                                } else {
+                                  // Pause logic
+                                }
+                              },
+                            ),
+                          ),
+                          const SizedBox(
+                            width: 8,
+                          ), // space between icon and progress
+                          SizedBox(
+                            width: 30,
+                            height: 30,
+                            child: ProgressCircle(
+                              progress: activity['progress'],
+                              onComplete: () {
+                                setState(() {
+                                  activity['completed'] = true;
+                                });
+                              },
+                              completedColor: const Color.fromARGB(
+                                157,
+                                243,
+                                231,
+                                141,
+                              ),
+                              tickSize: 12.0,
+                              isCompleted: activity['completed'] ?? false,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   );
@@ -161,8 +248,8 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
               ),
       floatingActionButton: FloatingActionButton(
         onPressed: _openAddActivityModal,
-        backgroundColor: widget.isDarkMode ? Colors.deepPurple : Colors.blue,
-        child: const Icon(Icons.add),
+        backgroundColor: Colors.deepPurple,
+        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }

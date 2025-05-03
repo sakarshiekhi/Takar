@@ -93,7 +93,7 @@ class ActivityCard extends StatelessWidget {
                 const SizedBox(height: 12),
 
                 // Tags (optional)
-                if (activity.tags != null && activity.tags.isNotEmpty)
+                if (activity.tags.isNotEmpty)
                   Wrap(
                     spacing: 8,
                     children: activity.tags.map((tag) {

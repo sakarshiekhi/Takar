@@ -1,7 +1,7 @@
 class Activity {
   final String title;
   final String subtitle;
-  final int progress; // From 0 to 100
+  final int progress; 
   final DateTime date;
   final List<String> tags;
 
