@@ -48,7 +48,9 @@ class ActivityCard extends StatelessWidget {
         },
         child: Card(
           color: Theme.of(context).cardColor,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -63,11 +65,15 @@ class ActivityCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(activity.title,
-                              style: Theme.of(context).textTheme.titleMedium),
+                          Text(
+                            activity.title,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
                           const SizedBox(height: 4),
-                          Text(activity.subtitle,
-                              style: Theme.of(context).textTheme.bodySmall),
+                          Text(
+                            activity.subtitle,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
                         ],
                       ),
                     ),
@@ -84,8 +90,10 @@ class ActivityCard extends StatelessWidget {
                             backgroundColor: accentColor.withOpacity(0.2),
                           ),
                         ),
-                        Text('${activity.progress.toInt()}%',
-                            style: Theme.of(context).textTheme.labelSmall),
+                        Text(
+                          '${activity.progress.toInt()}%',
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
                       ],
                     ),
                   ],
@@ -96,14 +104,15 @@ class ActivityCard extends StatelessWidget {
                 if (activity.tags.isNotEmpty)
                   Wrap(
                     spacing: 8,
-                    children: activity.tags.map((tag) {
-                      return Chip(
-                        label: Text(tag),
-                        backgroundColor: accentColor.withOpacity(0.1),
-                        labelStyle: TextStyle(color: accentColor),
-                        visualDensity: VisualDensity.compact,
-                      );
-                    }).toList(),
+                    children:
+                        activity.tags.map((tag) {
+                          return Chip(
+                            label: Text(tag),
+                            backgroundColor: accentColor.withOpacity(0.1),
+                            labelStyle: TextStyle(color: accentColor),
+                            visualDensity: VisualDensity.compact,
+                          );
+                        }).toList(),
                   ),
 
                 const SizedBox(height: 12),
@@ -134,28 +143,29 @@ class ActivityCard extends StatelessWidget {
   void _showActionSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      builder: (_) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('Edit Activity'),
-              onTap: () {
-                Navigator.pop(context);
-                onEdit?.call();
-              },
+      builder:
+          (_) => SafeArea(
+            child: Wrap(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.edit),
+                  title: const Text('Edit Activity'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    onEdit?.call();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete),
+                  title: const Text('Delete Activity'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    onDelete?.call();
+                  },
+                ),
+              ],
             ),
-            ListTile(
-              leading: const Icon(Icons.delete),
-              title: const Text('Delete Activity'),
-              onTap: () {
-                Navigator.pop(context);
-                onDelete?.call();
-              },
-            ),
-          ],
-        ),
-      ),
+          ),
     );
   }
 }
