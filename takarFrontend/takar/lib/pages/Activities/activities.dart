@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as CupertinoIcons;
 // Assuming progress_circle.dart exists and contains the ProgressCircle widget
-import 'package:takar/widgets/progress_circle.dart';
+import 'package:takar/widgets/progress_circle.dart'; // Make sure this path is correct
 import 'dart:async';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,7 +21,7 @@ class Activity {
   bool completed;
   bool isRunning;
   bool? isChecked;
-  Timer? timer;
+  Timer? timer; // Transient state, not saved
 
   Activity({
     required this.id,
@@ -33,7 +32,7 @@ class Activity {
     this.progress = 0.0,
     this.elapsedSeconds = 0,
     this.completed = false,
-    this.isRunning = false,
+    this.isRunning = false, // Transient state, saved to indicate if it *should* be running
     this.isChecked,
     this.timer,
   });
@@ -48,7 +47,7 @@ class Activity {
       progress: (json['progress'] as num?)?.toDouble() ?? 0.0,
       elapsedSeconds: json['elapsedSeconds'] ?? 0,
       completed: json['completed'] ?? false,
-      isRunning: json['isRunning'] ?? false,
+      isRunning: json['isRunning'] ?? false, // Load the saved running state
       isChecked: json['isChecked'],
     );
   }
@@ -63,6 +62,7 @@ class Activity {
       'progress': progress,
       'elapsedSeconds': elapsedSeconds,
       'completed': completed,
+      'isRunning': isRunning, // Save the running state
       'isChecked': isChecked,
     };
   }
@@ -71,7 +71,9 @@ class Activity {
 
   int get totalDurationSeconds {
     if (!isTimed) return 0;
-    return (int.tryParse(duration!) ?? 0) * 60;
+    // Ensure duration is a valid number before parsing
+    final minutes = int.tryParse(duration!) ?? 0;
+    return minutes * 60;
   }
 }
 
@@ -106,6 +108,7 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
 
   @override
   void dispose() {
+    // Cancel all timers when the widget is disposed
     for (var activity in _activities) {
       activity.timer?.cancel();
     }
@@ -117,58 +120,66 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final activitiesJson = prefs.getStringList('activities') ?? [];
-      final loadedActivities =
-          activitiesJson
-              .map((jsonStr) {
-                try {
-                  return Activity.fromJson(
-                    Map<String, dynamic>.from(json.decode(jsonStr)),
-                  );
-                } catch (e) {
-                  print("Error decoding activity: $jsonStr, Error: $e");
-                  return null;
-                }
-              })
-              .whereType<Activity>()
-              .toList();
+      final loadedActivities = activitiesJson.map((jsonStr) {
+        try {
+          return Activity.fromJson(
+            Map<String, dynamic>.from(json.decode(jsonStr)),
+          );
+        } catch (e) {
+          print("Error decoding activity: $jsonStr, Error: $e");
+          return null;
+        }
+      }).whereType<Activity>().toList();
 
+      // Reset transient timer state and cancel any lingering timers
       for (var activity in loadedActivities) {
-        // Ensure transient state is reset on load
-        activity.isRunning = false;
-        activity.timer
-            ?.cancel(); // Cancel any lingering timers from previous session
+        activity.timer?.cancel();
         activity.timer = null;
+        // Note: isRunning is loaded from saved state, so we don't reset it here.
       }
 
       if (mounted) {
         setState(() {
           _activities = loadedActivities;
         });
+
+        // --- Resume Timers for Activities that were running ---
+        // Iterate through the activities *after* setting the state
+        for (int i = 0; i < _activities.length; i++) {
+          final activity = _activities[i];
+          // Check if the activity was marked as running AND is timed AND not completed
+          if (activity.isRunning && activity.isTimed && !activity.completed) {
+            print("Attempting to resume timer for: ${activity.title}");
+            // Call _startTimer to resume counting from the saved elapsedSeconds
+            _startTimer(i);
+          } else {
+             // Ensure isRunning is false if it shouldn't be running (e.g., completed)
+             activity.isRunning = false;
+          }
+        }
+        // Save state again after potentially updating isRunning flags
+        _saveActivities();
       }
     } catch (e) {
       print("Error loading activities: $e");
     }
   }
 
+
   Future<void> _saveActivities() async {
-    // Debounce save operations slightly if needed, but usually fine
     try {
       final prefs = await SharedPreferences.getInstance();
-      final activitiesJson =
-          _activities
-              .map((activity) {
-                try {
-                  // Don't save transient timer state
-                  return json.encode(activity.toJson());
-                } catch (e) {
-                  print(
-                    "Error encoding activity: ${activity.title}, Error: $e",
-                  );
-                  return null;
-                }
-              })
-              .whereType<String>()
-              .toList();
+      final activitiesJson = _activities.map((activity) {
+        try {
+          // Don't save the transient 'timer' object itself
+          return json.encode(activity.toJson());
+        } catch (e) {
+          print(
+            "Error encoding activity: ${activity.title}, Error: $e",
+          );
+          return null;
+        }
+      }).whereType<String>().toList();
       await prefs.setStringList('activities', activitiesJson);
       print("Activities saved successfully."); // Debug print
     } catch (e) {
@@ -178,7 +189,6 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
 
   // --- Activity Management ---
   void _addActivity(String title, [String? duration]) {
-    // Removed the _isActionInProgress check here
     print("Add Activity: Starting add process."); // Debug print
 
     final now = DateTime.now();
@@ -187,11 +197,14 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
       title: title,
       duration: duration,
       time: _selectedTime?.format(context) ?? TimeOfDay.now().format(context),
-      date:
-          _selectedDate != null
-              ? DateFormat('yyyy-MM-dd').format(_selectedDate!)
-              : DateFormat('yyyy-MM-dd').format(now),
+      date: _selectedDate != null
+          ? DateFormat('yyyy-MM-dd').format(_selectedDate!)
+          : DateFormat('yyyy-MM-dd').format(now),
       isChecked: duration == null || duration.isEmpty ? false : null,
+      isRunning: false, // New activities are not running initially
+      completed: false, // New activities are not completed initially
+      progress: 0.0,
+      elapsedSeconds: 0,
     );
 
     _selectedDate = null;
@@ -221,9 +234,6 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
     }
     _saveActivities();
 
-    // Keep the delay and flag reset if saving was potentially slow,
-    // but for shared_preferences it's usually fast enough not to need this
-    // for just adding. Keeping it for consistency with other actions.
     Future.delayed(const Duration(milliseconds: 400), () {
       _isActionInProgress = false;
       print("Add Activity: Action flag reset."); // Debug print
@@ -353,10 +363,7 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
   }
 
   void _toggleTimer(int index) {
-    if (_isActionInProgress) {
-      print("Toggle Timer: Action in progress, skipping."); // Debug print
-      return; // Prevent concurrent actions
-    }
+    // Removed _isActionInProgress check
     if (index < 0 || index >= _activities.length) {
       print(
         "Toggle Timer: Index out of bounds ($index). Aborting.",
@@ -366,8 +373,6 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
 
     final activity = _activities[index];
     if (!activity.isTimed || activity.completed) return;
-
-    // No need for _isActionInProgress = true here as it's a quick toggle
 
     setState(() {
       activity.isRunning = !activity.isRunning;
@@ -391,41 +396,41 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
     }
     final activity = _activities[index];
     final totalDuration = activity.totalDurationSeconds;
-    if (totalDuration <= 0 || activity.timer != null) {
+    // Only start if it's a timed activity, not completed, and timer is not already running
+    if (!activity.isTimed || activity.completed || activity.timer != null) {
       print(
-        "Start Timer: Invalid duration or timer already running for index $index.",
+        "Start Timer: Conditions not met for index $index. isTimed: ${activity.isTimed}, completed: ${activity.completed}, timer != null: ${activity.timer != null}",
       ); // Debug print
-      return; // Don't start if already running or no duration
+      return;
     }
+
+    print("Starting timer for index $index, title: ${activity.title}");
 
     activity.timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       // Check if the widget is still mounted and the activity at this index is the same
+      // Also check if the activity is still marked as running in the state
       if (!mounted ||
           index >= _activities.length ||
-          _activities[index].id != activity.id) {
+          _activities[index].id != activity.id ||
+          !_activities[index].isRunning) {
         print(
-          "Start Timer: Timer cancelled due to unmounted widget, invalid index, or activity mismatch for index $index.",
+          "Start Timer: Timer cancelled due to unmounted widget, invalid index, activity mismatch, or activity no longer running for index $index.",
         ); // Debug print
         timer.cancel();
-        activity.timer = null;
+        // Only set timer to null if it's the *current* activity's timer
+        if (index < _activities.length && _activities[index].id == activity.id) {
+             _activities[index].timer = null;
+        }
         return;
       }
 
       final currentActivity = _activities[index];
-      // Check if the activity is still marked as running
-      if (!currentActivity.isRunning) {
-        print(
-          "Start Timer: Timer cancelled because activity is no longer running for index $index.",
-        ); // Debug print
-        timer.cancel();
-        currentActivity.timer = null;
-        return;
-      }
 
       setState(() {
         currentActivity.elapsedSeconds++;
         currentActivity.progress =
             (currentActivity.elapsedSeconds / totalDuration).clamp(0.0, 1.0);
+
         if (currentActivity.progress >= 1.0) {
           print(
             "Start Timer: Timer completed for index $index.",
@@ -433,11 +438,12 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
           timer.cancel();
           currentActivity.timer = null;
           currentActivity.completed = true;
-          currentActivity.isRunning = false;
+          currentActivity.isRunning = false; // Mark as not running when completed
           _saveActivities(); // Save completed state
         }
       });
       // Save progress periodically, but not on every tick to avoid excessive writes
+      // Also save when completed
       if (currentActivity.elapsedSeconds % 5 == 0 ||
           currentActivity.completed) {
         _saveActivities();
@@ -445,6 +451,7 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
     });
     print("Start Timer: Timer initialized for index $index."); // Debug print
   }
+
 
   void _pauseTimer(int index) {
     if (index < 0 || index >= _activities.length) {
@@ -456,8 +463,8 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
     final activity = _activities[index];
     activity.timer?.cancel();
     activity.timer = null;
+    // isRunning is set to false in _toggleTimer
     print("Pause Timer: Timer cancelled for index $index."); // Debug print
-    // State change (isRunning = false) is already handled in _toggleTimer
     _saveActivities(); // Save paused state
   }
 
@@ -476,8 +483,6 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
     final activity = _activities[index];
     if (activity.isTimed) return; // Only for non-timed activities
 
-    // No need for _isActionInProgress = true here as it's a quick toggle
-
     setState(() {
       activity.isChecked = value ?? false;
       activity.completed =
@@ -490,10 +495,7 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
   }
 
   void _resetActivity(int index) {
-    if (_isActionInProgress) {
-      print("Reset Activity: Action in progress, skipping."); // Debug print
-      return; // Prevent concurrent actions
-    }
+    // Removed _isActionInProgress check
     if (index < 0 || index >= _activities.length) {
       print(
         "Reset Activity: Index out of bounds ($index). Aborting.",
@@ -504,28 +506,25 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
     final activity = _activities[index];
     if (!activity.isTimed) return; // Only for timed activities
 
-    _isActionInProgress = true; // Mark action as started
     print(
       "Reset Activity: Starting reset process for index $index.",
     ); // Debug print
 
-    activity.timer?.cancel();
+    activity.timer?.cancel(); // Cancel any running timer
 
     setState(() {
-      activity.completed = false;
-      activity.isRunning = false;
-      activity.progress = 0.0;
-      activity.elapsedSeconds = 0;
-      activity.timer = null;
+      activity.completed = false; // Mark as not completed
+      activity.isRunning = false; // Mark as not running
+      activity.progress = 0.0; // Reset progress
+      activity.elapsedSeconds = 0; // Reset elapsed time
+      activity.timer = null; // Clear the timer object
       print("Reset Activity: State reset for index $index."); // Debug print
     });
     _saveActivities(); // Save reset state
 
-    Future.delayed(const Duration(milliseconds: 300), () {
-      _isActionInProgress = false;
-      print("Reset Activity: Action flag reset."); // Debug print
-    });
+    // Removed Future.delayed and _isActionInProgress reset here
   }
+
 
   // --- UI: Modals ---
   void _showEditActivityModal(int index) {
@@ -561,13 +560,14 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
     TimeOfDay? modalSelectedTime;
     if (activity.time != null && activity.time!.isNotEmpty) {
       try {
-        modalSelectedTime = TimeOfDay.fromDateTime(
-          DateFormat.jm().parseLoose(activity.time!),
-        );
+        // Use parseLoose for potentially flexible time formats
+        final parsedDateTime = DateFormat.jm().parseLoose(activity.time!);
+        modalSelectedTime = TimeOfDay.fromDateTime(parsedDateTime);
       } catch (e) {
         print("Error parsing time for edit: $e");
       }
     }
+
 
     showModalBottomSheet(
       context: context,
@@ -697,7 +697,7 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
                                   ? durationController.text
                                   : null;
                           final bool wasTimed = currentActivity.isTimed;
-                          final bool isNowTimed = updatedDuration != null;
+                          final bool isNowTimed = updatedDuration != null && updatedDuration.isNotEmpty; // Corrected check
                           final newTitle = titleController.text;
                           final newDate =
                               modalSelectedDate != null
@@ -715,22 +715,39 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
                             currentActivity.duration = updatedDuration;
                             currentActivity.date = newDate;
                             currentActivity.time = newTime;
+
                             // Reset timer/progress state if duration changes or timed status changes
-                            if (wasTimed != isNowTimed ||
-                                (isNowTimed &&
-                                    currentActivity.duration !=
-                                        durationController.text)) {
-                              currentActivity.timer?.cancel();
-                              currentActivity.timer = null;
-                              currentActivity.isRunning = false;
-                              currentActivity.progress = 0.0;
-                              currentActivity.elapsedSeconds = 0;
-                              currentActivity.completed = false;
-                              currentActivity.isChecked =
-                                  isNowTimed
-                                      ? null
-                                      : false; // Reset checkbox for non-timed
-                            }
+                            // Check if the *parsed* total duration changes
+                            final int oldTotalDuration = wasTimed ? (int.tryParse(currentActivity.duration!) ?? 0) * 60 : 0;
+                            final int newTotalDuration = isNowTimed ? (int.tryParse(updatedDuration!) ?? 0) * 60 : 0;
+
+
+                            if (wasTimed != isNowTimed || (isNowTimed && oldTotalDuration != newTotalDuration)) {
+                               print("Edit modal save: Duration or timed status changed. Resetting timer state.");
+                               currentActivity.timer?.cancel();
+                               currentActivity.timer = null;
+                               currentActivity.isRunning = false;
+                               currentActivity.progress = 0.0;
+                               currentActivity.elapsedSeconds = 0;
+                               currentActivity.completed = false;
+                               currentActivity.isChecked =
+                                   isNowTimed
+                                       ? null
+                                       : false; // Reset checkbox for non-timed
+                             } else if (isNowTimed && currentActivity.completed) {
+                               // If it was timed and completed, and duration didn't change, keep it completed
+                               // No reset needed unless duration changed
+                             } else if (!isNowTimed) {
+                               // If it's now non-timed, ensure timer state is off and checkbox is managed
+                               currentActivity.timer?.cancel();
+                               currentActivity.timer = null;
+                               currentActivity.isRunning = false;
+                               currentActivity.progress = 0.0;
+                               currentActivity.elapsedSeconds = 0;
+                               currentActivity.completed = currentActivity.isChecked ?? false; // Completion based on checkbox
+                             }
+
+
                             print(
                               "Edit modal save: Activity updated at index $index.",
                             ); // Debug print
@@ -769,7 +786,6 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
       print("Add Modal: Action in progress, skipping."); // Debug print
       return; // Prevent opening during another action (like a swipe animation)
     }
-    // Removed _isActionInProgress = true here
 
     print("Add Modal: Showing modal."); // Debug print
 
@@ -963,49 +979,48 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
           ),
         ],
       ),
-      body:
-          _activities.isEmpty
-              ? Center(
-                child: Text(
-                  'No activities yet.\nTap + to add one.',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.vazirmatn(
-                    fontSize: 16,
-                    color: textTheme.bodyMedium?.color?.withOpacity(0.7),
-                  ),
+      body: _activities.isEmpty
+          ? Center(
+              child: Text(
+                'No activities yet.\nTap + to add one.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.vazirmatn(
+                  fontSize: 16,
+                  color: textTheme.bodyMedium?.color?.withOpacity(0.7),
                 ),
-              )
-              : AnimatedList(
-                key: _listKey,
-                initialItemCount: _activities.length,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                itemBuilder: (context, index, animation) {
-                  // IMPORTANT: Check index bounds *before* accessing _activities
-                  // If the index is out of bounds, it means the item has been removed
-                  // from the data list but AnimatedList is still building its exit animation.
-                  // In this case, we should not try to access _activities[index].
-                  // The removeItem builder handles passing the removed item's data.
-                  if (index < 0 || index >= _activities.length) {
-                    // This case is handled by removeItem's builder which passes the removed item.
-                    // If this builder is somehow called with an invalid index outside of removeItem,
-                    // return an empty container to prevent errors.
-                    print(
-                      "Warning: AnimatedList itemBuilder called with invalid index ($index).",
-                    ); // Debug print
-                    return const SizedBox.shrink();
-                  }
-                  final activity = _activities[index];
-                  return _buildActivityItem(
-                    context,
-                    activity,
-                    animation,
-                    index: index,
-                  );
-                },
               ),
+            )
+          : AnimatedList(
+              key: _listKey,
+              initialItemCount: _activities.length,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 8,
+              ),
+              itemBuilder: (context, index, animation) {
+                // IMPORTANT: Check index bounds *before* accessing _activities
+                // If the index is out of bounds, it means the item has been removed
+                // from the data list but AnimatedList is still building its exit animation.
+                // In this case, we should not try to access _activities[index].
+                // The removeItem builder handles passing the removed item's data.
+                if (index < 0 || index >= _activities.length) {
+                  // This case is handled by removeItem's builder which passes the removed item.
+                  // If this builder is somehow called with an invalid index outside of removeItem,
+                  // return an empty container to prevent errors.
+                  print(
+                    "Warning: AnimatedList itemBuilder called with invalid index ($index).",
+                  ); // Debug print
+                  return const SizedBox.shrink();
+                }
+                final activity = _activities[index];
+                return _buildActivityItem(
+                  context,
+                  activity,
+                  animation,
+                  index: index,
+                );
+              },
+            ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddActivityModal,
         backgroundColor: Colors.deepPurple,
@@ -1038,99 +1053,95 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
     final hintColor = theme.hintColor;
 
     // --- Build Trailing Widget ---
-    Widget buildTrailingWidget() {
-      // Use activityToShow here
+    // This widget will be on the RIGHT side of the ListTile.
+    Widget? buildTrailingWidget() {
+      // If timed and completed, show the Tick and Reset button on the RIGHT.
+      if (activityToShow.isTimed && activityToShow.completed) {
+        return Row(
+          mainAxisSize: MainAxisSize.min, // Use minimum space
+          children: [
+            // Purple Tick (now first in the row)
+            Icon(
+              Icons.check_circle,
+              color: Colors.deepPurple,
+              size: 28,
+            ),
+            const SizedBox(width: 8), // Space between tick and reset button
+            // Reset Button (now second in the row)
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              color: Colors.deepPurple, // Use deepPurple for the icon
+              tooltip: 'Reset Task',
+              // Only allow reset if not currently removing and index is valid
+              onPressed: isRemoving ||
+                      index < 0 ||
+                      index >= _activities.length ||
+                      _isActionInProgress
+                  ? null
+                  : () => _resetActivity(index),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+            ),
+          ],
+        );
+      }
+
+      // If timed and NOT completed, show Play/Pause and Progress on the RIGHT.
       if (activityToShow.isTimed) {
-        if (activityToShow.completed) {
-          // Show Purple Tick and Reset button
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                // Purple Tick
-                Icons.check_circle,
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: Icon(
+                activityToShow.isRunning
+                    ? Icons.pause_circle_filled
+                    : Icons.play_circle_filled,
                 color: Colors.deepPurple,
                 size: 28,
               ),
-              const SizedBox(width: 8),
-              IconButton(
-                // Reset Button
-                icon: const Icon(Icons.refresh),
-                color: Colors.deepPurple.shade300, // Slightly lighter for reset
-                tooltip: 'Reset Task',
-                // Only allow reset if not currently removing and index is valid
-                onPressed:
-                    isRemoving ||
-                            index < 0 ||
-                            index >= _activities.length ||
-                            _isActionInProgress
-                        ? null
-                        : () => _resetActivity(index),
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
+              // Only allow toggle if not currently removing and index is valid
+              onPressed: isRemoving ||
+                      index < 0 ||
+                      index >= _activities.length ||
+                      _isActionInProgress
+                  ? null
+                  : () => _toggleTimer(index),
+              tooltip: activityToShow.isRunning ? 'Pause' : 'Start',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 32,
+              height: 32,
+              child: ProgressCircle(
+                progress: activityToShow.progress,
+                completedColor: Colors.deepPurple.shade300,
+                tickSize: 18,
+                isCompleted: activityToShow.completed,
+                onComplete: () {
+                  // You can add logic here if needed when the progress circle completes
+                  print(
+                    "ProgressCircle completed for activity: ${activityToShow.title}",
+                  ); // Debug print
+                },
               ),
-            ],
-          );
-        } else {
-          // Show Play/Pause and Progress
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: Icon(
-                  activityToShow.isRunning
-                      ? Icons.pause_circle_filled
-                      : Icons.play_circle_filled,
-                  color: Colors.deepPurple,
-                  size: 28,
-                ),
-                // Only allow toggle if not currently removing and index is valid
-                onPressed:
-                    isRemoving ||
-                            index < 0 ||
-                            index >= _activities.length ||
-                            _isActionInProgress
-                        ? null
-                        : () => _toggleTimer(index),
-                tooltip: activityToShow.isRunning ? 'Pause' : 'Start',
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 32,
-                height: 32,
-                child: ProgressCircle(
-                  progress: activityToShow.progress,
-                  completedColor: Colors.deepPurple.shade300,
-                  tickSize: 18,
-                  isCompleted: activityToShow.completed,
-                  onComplete: () {
-                    // You can add logic here if needed when the progress circle completes
-                    // For example, if you wanted to trigger something when the timer finishes
-                    print(
-                      "ProgressCircle completed for activity: ${activityToShow.title}",
-                    ); // Debug print
-                  },
-                ),
-              ),
-            ],
-          );
-        }
+            ),
+          ],
+        );
       } else {
-        // Non-timed Activity: Show Checkbox
+        // Non-timed Activity: Show Checkbox on the RIGHT.
         return Transform.scale(
           scale: 1.2,
           child: Checkbox(
             value: activityToShow.isChecked ?? false,
             // Only allow toggle if not currently removing and index is valid
-            onChanged:
-                isRemoving ||
-                        index < 0 ||
-                        index >= _activities.length ||
-                        _isActionInProgress
-                    ? null
-                    : (bool? value) => _toggleCheckbox(index, value),
+            onChanged: isRemoving ||
+                    index < 0 ||
+                    index >= _activities.length ||
+                    _isActionInProgress
+                ? null
+                : (bool? value) => _toggleCheckbox(index, value),
             shape: const CircleBorder(),
             checkColor: Colors.white,
             activeColor: Colors.deepPurple,
@@ -1142,10 +1153,23 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
       }
     }
 
+    // --- Build Leading Widget ---
+    // This widget will be on the LEFT side of the ListTile.
+    Widget? buildLeadingWidget() {
+      // No leading widget needed for timed activities with the new layout
+      // All relevant icons for timed activities are now in the trailing widget.
+      return null;
+    }
+
+
     // Build the ListTile content
     Widget buildListTileContent() {
       // Use activityToShow here
       return ListTile(
+        // Use the leading widget when applicable (will be null for timed activities)
+        leading: buildLeadingWidget(),
+        // Use the trailing widget when applicable
+        trailing: buildTrailingWidget(),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         title: Text(
           activityToShow.title,
@@ -1166,7 +1190,6 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        trailing: buildTrailingWidget(),
       );
     }
 
@@ -1200,7 +1223,7 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
                 }
               },
               child: Container(
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration( // Added const
                   color: Colors.deepPurple,
                   borderRadius: BorderRadius.only(
                     bottomLeft: Radius.circular(16),
@@ -1256,7 +1279,7 @@ class _ActivitiesPageState extends State<ActivitiesPage> {
                 }
               },
               child: Container(
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration( // Added const
                   color: Colors.deepPurple,
                   borderRadius: BorderRadius.only(
                     bottomRight: Radius.circular(16),
